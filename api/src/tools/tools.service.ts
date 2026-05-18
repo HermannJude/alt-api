@@ -9,45 +9,26 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateToolDto } from './dto/create-tool.dto';
 import { UpdateToolDto } from './dto/update-tool.dto';
 import { ToolListResponseDto, ToolResponseDto } from './dto/tool.dto';
-import { async, skip } from 'rxjs';
 
 @Injectable()
 export class ToolsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createTool(createToolDto: CreateToolDto): Promise<ToolResponseDto> {
-    try {
-      const tool = await this.prisma.tool.create({
-        data: {
-          name: createToolDto.name,
-          description: createToolDto.description,
-          vendor: createToolDto.vendor,
-          websiteUrl: createToolDto.websiteUrl,
-          categoryId: createToolDto.categoryId,
-          monthlyCost: createToolDto.monthlyCost,
-          ownerDepartment: createToolDto.ownerDepartment,
-          status: createToolDto.status || 'active',
-        },
-        include: { category: true },
-      });
-      return this.mapToolToResponse(tool, tool.category);
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2003') {
-          throw new BadRequestException(
-            'Category does not exist. Please provide a valid categoryId.',
-          );
-        }
-
-        if (error.code === 'P2002') {
-          throw new ConflictException(
-            'A tool with the same unique value already exists.',
-          );
-        }
-      }
-
-      throw error;
-    }
+    const tool = await this.prisma.tool.create({
+      data: {
+        name: createToolDto.name,
+        description: createToolDto.description,
+        vendor: createToolDto.vendor,
+        websiteUrl: createToolDto.websiteUrl,
+        categoryId: createToolDto.categoryId,
+        monthlyCost: createToolDto.monthlyCost,
+        ownerDepartment: createToolDto.ownerDepartment,
+        status: createToolDto.status || 'active',
+      },
+      include: { category: true },
+    });
+    return this.mapToolToResponse(tool, tool.category);
   }
 
   async getToolList(
@@ -82,7 +63,7 @@ export class ToolsService {
     };
   }
 
-  async getTool(id: number): Promise<ToolResponseDto> {
+  async findToolById(id: number): Promise<ToolResponseDto | null> {
     const tool = await this.prisma.tool.findUnique({
       where: { id },
       include: {
@@ -97,7 +78,7 @@ export class ToolsService {
     });
 
     if (!tool) {
-      throw new NotFoundException(`Tool with ID ${id} does not exist`);
+      return null;
     }
 
     return this.mapToolToResponse(tool, tool.category);
@@ -107,58 +88,22 @@ export class ToolsService {
     id: number,
     updateToolDto: UpdateToolDto,
   ): Promise<ToolResponseDto> {
-    const existingTool = await this.prisma.tool.findUnique({
+    const tool = await this.prisma.tool.update({
       where: { id },
+      data: {
+        name: updateToolDto.name,
+        description: updateToolDto.description,
+        vendor: updateToolDto.vendor,
+        websiteUrl: updateToolDto.websiteUrl,
+        categoryId: updateToolDto.categoryId,
+        monthlyCost: updateToolDto.monthlyCost,
+        ownerDepartment: updateToolDto.ownerDepartment,
+        status: updateToolDto.status,
+      },
+      include: { category: true },
     });
 
-    if (!existingTool) {
-      throw new NotFoundException(`Tool with ID ${id} does not exist`);
-    }
-
-    try {
-      const tool = await this.prisma.tool.update({
-        where: { id },
-        data: {
-          ...(updateToolDto.name !== undefined && { name: updateToolDto.name }),
-          ...(updateToolDto.description !== undefined && {
-            description: updateToolDto.description,
-          }),
-          ...(updateToolDto.vendor !== undefined && {
-            vendor: updateToolDto.vendor,
-          }),
-          ...(updateToolDto.websiteUrl !== undefined && {
-            websiteUrl: updateToolDto.websiteUrl,
-          }),
-          ...(updateToolDto.categoryId !== undefined && {
-            categoryId: updateToolDto.categoryId,
-          }),
-          ...(updateToolDto.monthlyCost !== undefined && {
-            monthlyCost: updateToolDto.monthlyCost,
-          }),
-          ...(updateToolDto.ownerDepartment !== undefined && {
-            ownerDepartment: updateToolDto.ownerDepartment,
-          }),
-          ...(updateToolDto.status !== undefined && {
-            status: updateToolDto.status,
-          }),
-        },
-        include: {
-          category: true,
-        },
-      });
-
-      return this.mapToolToResponse(tool, tool.category);
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2003'
-      ) {
-        throw new BadRequestException(
-          'Category does not exist. Please provide a valid categoryId.',
-        );
-      }
-      throw error;
-    }
+    return this.mapToolToResponse(tool, tool.category);
   }
 
   private mapToolToResponse(tool: any, category?: any): ToolResponseDto {
