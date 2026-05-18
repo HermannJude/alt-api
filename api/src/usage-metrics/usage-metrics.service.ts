@@ -7,14 +7,29 @@ import { Prisma } from 'generated/prisma/client';
 @Injectable()
 export class UsageMetricsService {
   constructor(private readonly prisma: PrismaService) {}
+
   create(createUsageMetricDto: CreateUsageMetricDto) {
     return this.prisma.usageMetric.create({
-      data: createUsageMetricDto as Prisma.UsageMetricCreateInput,
+      data: {
+        toolId: createUsageMetricDto.toolId,
+        periodStart: new Date(createUsageMetricDto.periodStart),
+        periodEnd: new Date(createUsageMetricDto.periodEnd),
+        totalSessions: createUsageMetricDto.totalSessions,
+        avgSessionMinutes: createUsageMetricDto.avgSessionMinutes,
+      },
     });
   }
 
-  findAll() {
-    return this.prisma.usageMetric.findMany();
+  findAll(toolId?: number) {
+    if (toolId) {
+      return this.prisma.usageMetric.findMany({
+        where: { toolId },
+        orderBy: { periodStart: 'desc' },
+      });
+    }
+    return this.prisma.usageMetric.findMany({
+      orderBy: { periodStart: 'desc' },
+    });
   }
 
   findOne(id: number) {

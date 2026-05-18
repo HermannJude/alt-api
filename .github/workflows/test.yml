@@ -29,11 +29,14 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: api/pnpm-lock.yaml 
+          cache-dependency-path: api/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install
-      
+
+      - name: Generate Prisma client
+        run: pnpm prisma generate
+
       - name: Build project
         run: pnpm build
 

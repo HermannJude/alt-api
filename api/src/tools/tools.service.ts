@@ -9,6 +9,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateToolDto } from './dto/create-tool.dto';
 import { UpdateToolDto } from './dto/update-tool.dto';
 import { ToolListResponseDto, ToolResponseDto } from './dto/tool.dto';
+import { QueryToolsDto } from './dto/query-tools.dto';
 
 @Injectable()
 export class ToolsService {
@@ -31,35 +32,37 @@ export class ToolsService {
     return this.mapToolToResponse(tool, tool.category);
   }
 
-  async getToolList(
-    page: number = 1,
-    limit: number = 10,
-  ): Promise<ToolListResponseDto> {
+  async getToolList(query: QueryToolsDto): Promise<ToolListResponseDto> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
     const skip = (page - 1) * limit;
 
-    const [tools, total] = await Promise.all([
+    const where = this.buildWhereCondition(query);
+    const orderBy = this.buildOrderBy(query);
+
+    const [tools, total, filtered] = await Promise.all([
       this.prisma.tool.findMany({
+        where,
         skip,
         take: limit,
-        include: {
-          category: true,
-        },
-        orderBy: {
-          id: 'asc',
-        },
+        include: { category: true },
+        orderBy,
       }),
       this.prisma.tool.count(),
+      this.prisma.tool.count({ where }),
     ]);
 
     const data = tools.map((tool) =>
       this.mapToolToResponse(tool, tool.category),
     );
 
+    const filters_applied = this.buildFiltersApplied(query, page, limit);
+
     return {
       data,
       total,
-      filtered: data.length,
-      filters_applied: {},
+      filtered,
+      filters_applied,
     };
   }
 
@@ -121,5 +124,76 @@ export class ToolsService {
       created_at: tool.createdAt,
       updated_at: tool.updatedAt,
     };
+  }
+
+  private buildWhereCondition(query: QueryToolsDto): Prisma.ToolWhereInput {
+    const where: Prisma.ToolWhereInput = {};
+
+    if (query.department) {
+      where.ownerDepartment = query.department;
+    }
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    if (query.min_cost !== undefined || query.max_cost !== undefined) {
+      where.monthlyCost = {};
+      if (query.min_cost !== undefined) {
+        where.monthlyCost.gte = query.min_cost;
+      }
+      if (query.max_cost !== undefined) {
+        where.monthlyCost.lte = query.max_cost;
+      }
+    }
+
+    if (query.category) {
+      where.category = {
+        name: { equals: query.category, mode: 'insensitive' },
+      };
+    }
+
+    return where;
+  }
+
+  private buildOrderBy(
+    query: QueryToolsDto,
+  ): Prisma.ToolOrderByWithRelationInput {
+    switch (query.sort) {
+      case 'name_asc':
+        return { name: 'asc' };
+      case 'name_desc':
+        return { name: 'desc' };
+      case 'cost_asc':
+        return { monthlyCost: 'asc' };
+      case 'cost_desc':
+        return { monthlyCost: 'desc' };
+      case 'created_at_asc':
+        return { createdAt: 'asc' };
+      case 'created_at_desc':
+        return { createdAt: 'desc' };
+      default:
+        return { id: 'asc' };
+    }
+  }
+
+  private buildFiltersApplied(
+    query: QueryToolsDto,
+    page: number,
+    limit: number,
+  ): Record<string, string | number | boolean | null> {
+    const filters_applied: Record<string, string | number | boolean | null> =
+      {};
+
+    if (query.department) filters_applied.department = query.department;
+    if (query.status) filters_applied.status = query.status;
+    if (query.min_cost !== undefined) filters_applied.min_cost = query.min_cost;
+    if (query.max_cost !== undefined) filters_applied.max_cost = query.max_cost;
+    if (query.category) filters_applied.category = query.category;
+    if (query.sort) filters_applied.sort = query.sort;
+    filters_applied.page = page;
+    filters_applied.limit = limit;
+
+    return filters_applied;
   }
 }
