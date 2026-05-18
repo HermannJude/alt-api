@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "🐘 Starting PostgreSQL Stack (PostgreSQL + pgAdmin)..."
-docker-compose --profile postgres up -d
+docker-compose -f compose.dev.yml --env-file .env.example --profile postgres up -d
 
 echo "⏳ Waiting for services to be healthy..."
 sleep 10

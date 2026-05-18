@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Department {
+  Engineering
+  Sales
+  Marketing
+  HR
+  Finance
+  Operations
+  Design
+}
+
+enum ToolStatus {
+  active
+  deprecated
+  trial
+}
+
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(50)
+  slug        String   @unique @db.VarChar(80)
+  description String?  @db.Text
+  colorHex    String   @default("#6366f1") @map("color_hex") @db.VarChar(7)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tools Tool[]
+
+  @@map("categories")
+}
+
+model Tool {
+  id                Int          @id @default(autoincrement())
+  name              String       @db.VarChar(100)
+  description       String?      @db.Text
+  vendor            String?      @db.VarChar(100)
+  websiteUrl        String?      @map("website_url") @db.VarChar(255)
+  categoryId        Int          @map("category_id")
+  monthlyCost       Decimal      @map("monthly_cost") @db.Decimal(10, 2)
+  activeUsersCount  Int          @default(0) @map("active_users_count")
+  ownerDepartment   Department   @map("owner_department")
+  status            ToolStatus   @default(active)
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  category      Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  usageMetrics  UsageMetric[]
+
+  @@index([categoryId])
+  @@index([ownerDepartment])
+  @@index([status])
+  @@index([activeUsersCount])
+  @@map("tools")
+}
+
+model UsageMetric {
+  id                  Int      @id @default(autoincrement())
+  toolId              Int      @map("tool_id")
+  periodStart         DateTime @map("period_start") @db.Date
+  periodEnd           DateTime @map("period_end") @db.Date
+  totalSessions       Int      @default(0) @map("total_sessions")
+  avgSessionMinutes   Decimal  @map("avg_session_minutes") @db.Decimal(10, 2)
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  tool Tool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  @@index([toolId])
+  @@index([periodStart, periodEnd])
+  @@map("usage_metrics")
+}
