@@ -6,9 +6,10 @@ import { UsageMetricsModule } from './usage-metrics/usage-metrics.module';
 import { CategoriesModule } from './categories/categories.module';
 import { PrismaService } from './prisma/prisma.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
-  imports: [ToolsModule, CategoriesModule, UsageMetricsModule, PrismaModule],
+  imports: [ToolsModule, CategoriesModule, UsageMetricsModule, PrismaModule, AnalyticsModule],
   controllers: [AppController],
   providers: [AppService, PrismaService],
 })

@@ -7,7 +7,6 @@ import {
   Put,
   HttpCode,
   Query,
-  DefaultValuePipe,
   ParseIntPipe,
   NotFoundException,
 } from '@nestjs/common';
