@@ -25,7 +25,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: 'Department costs breakdown',
     description:
-      'Aggregated tool costs by department with cost percentages and averages. Only includes active tools.',
+      'Aggregated tool costs by department with cost percentages and averages. Uses active tools only and computes totals, averages, and budget share per department.',
   })
   @ApiQuery({
     name: 'sort_by',
@@ -60,6 +60,15 @@ export class AnalyticsController {
       most_expensive_department: 'Engineering',
     },
   })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid sort parameters',
+    example: {
+      statusCode: 400,
+      message: 'sort_by must be department or total_cost',
+      error: 'Bad Request',
+    },
+  })
   getDepartmentCosts(
     @Query('sort_by') sortBy: 'department' | 'total_cost' = 'department',
     @Query('order') order: 'asc' | 'desc' = 'asc',
@@ -71,7 +80,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: 'Expensive tools analysis',
     description:
-      'Lists active tools by monthly cost, computes cost per user, and flags inefficient tools against company average.',
+      'Lists active tools by monthly cost, computes cost per user, compares each tool to the company-wide average, and ranks efficiency based on that ratio.',
   })
   @ApiQuery({
     name: 'limit',
@@ -105,6 +114,15 @@ export class AnalyticsController {
       potential_savings_identified: 345.5,
     },
   })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid query parameters',
+    example: {
+      statusCode: 400,
+      message: 'limit must be a positive integer between 1 and 100',
+      error: 'Bad Request',
+    },
+  })
   getExpensiveTools(
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number = 10,
     @Query('min_cost', new DefaultValuePipe('')) minCost?: string,
@@ -126,7 +144,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: 'Tools breakdown by category',
     description:
-      'Aggregated tool costs by category with efficiency insights. Identifies most expensive and most efficient categories.',
+      'Aggregated tool costs by category with efficiency insights. Joins tools and categories, groups by category_id, and computes budget share plus cost per user.',
   })
   @ApiResponse({
     status: 200,
@@ -148,6 +166,15 @@ export class AnalyticsController {
       most_efficient_category: 'Productivity',
     },
   })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request',
+    example: {
+      statusCode: 400,
+      message: 'Bad Request',
+      error: 'Bad Request',
+    },
+  })
   getToolsByCategory(): Promise<ToolsByCategoryInsightsDto> {
     return this.analyticsService.getToolsByCategory();
   }
@@ -156,7 +183,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: 'Low usage tools analysis',
     description:
-      'Finds underutilized tools with savings potential. High warning is assigned to tools with no users or very high cost per user.',
+      'Finds underutilized tools with savings potential. Filters active tools by max_users, flags warning levels from cost per user, and totals monthly and annual savings.',
   })
   @ApiQuery({
     name: 'max_users',
@@ -185,6 +212,15 @@ export class AnalyticsController {
       annual_savings: 4200,
     },
   })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid max_users parameter',
+    example: {
+      statusCode: 400,
+      message: 'max_users must be a positive integer',
+      error: 'Bad Request',
+    },
+  })
   getLowUsageTools(
     @Query('max_users', new DefaultValuePipe(5), ParseIntPipe)
     maxUsers: number = 5,
@@ -196,7 +232,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: 'Vendor summary analysis',
     description:
-      'Groups tools by vendor and highlights consolidation opportunities, including vendor efficiency based on cost per user.',
+      'Groups tools by vendor, deduplicates departments, and highlights consolidation opportunities using vendor total cost, users, and cost per user.',
   })
   @ApiResponse({
     status: 200,
@@ -217,6 +253,15 @@ export class AnalyticsController {
       most_expensive_vendor: 'Acme Corp',
       most_efficient_vendor: 'MiniTools Ltd',
       single_tool_vendors_count: 5,
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request',
+    example: {
+      statusCode: 400,
+      message: 'Bad Request',
+      error: 'Bad Request',
     },
   })
   getVendorSummary(): Promise<VendorInsightsDto> {

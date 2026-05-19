@@ -77,7 +77,7 @@ make docs       # Open Swagger (browser)
 Check GitHub Actions status to ensure builds are passing:
 
 - Navigate to `.github/workflows/test.yml` in Actions tab
-- Verify latest run: **Build → Test → Deploy** all passing
+- Verify latest run: **Build → Test** all passing
 - If red, see failure details before starting local development
 
 **Pipeline steps:**
@@ -117,3 +117,11 @@ cd api && pnpm test:watch
 
 - `GET /api/usage-metrics?toolId=1` - List (filterable)
 - `POST /api/usage-metrics` - Record
+
+### Analytics
+
+- `GET /api/analytics/department-costs` - Cost breakdown by department
+- `GET /api/analytics/expensive-tools` - Highest-cost tools with efficiency rating
+- `GET /api/analytics/tools-by-category` - Cost and usage breakdown by category
+- `GET /api/analytics/low-usage-tools` - Underutilized tools and savings potential
+- `GET /api/analytics/vendor-summary` - Vendor consolidation and efficiency view
