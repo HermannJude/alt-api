@@ -579,6 +579,255 @@ describe('AnalyticsService - getDepartmentCosts', () => {
       });
     });
   });
+
+  describe('getLowUsageTools', () => {
+    const lowUsageMocks = [
+      {
+        id: 20,
+        name: 'Dormant Platform',
+        description: null,
+        vendor: 'DormantCo',
+        websiteUrl: 'https://dormant.example',
+        categoryId: 1,
+        monthlyCost: 500,
+        ownerDepartment: Department.Sales,
+        status: ToolStatus.active,
+        activeUsersCount: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any,
+      {
+        id: 21,
+        name: 'Review App',
+        description: null,
+        vendor: 'ReviewCo',
+        websiteUrl: 'https://review.example',
+        categoryId: 2,
+        monthlyCost: 250,
+        ownerDepartment: Department.Marketing,
+        status: ToolStatus.active,
+        activeUsersCount: 5,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any,
+      {
+        id: 22,
+        name: 'Monitor App',
+        description: null,
+        vendor: 'MonitorCo',
+        websiteUrl: 'https://monitor.example',
+        categoryId: 3,
+        monthlyCost: 100,
+        ownerDepartment: Department.Engineering,
+        status: ToolStatus.active,
+        activeUsersCount: 5,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any,
+      {
+        id: 23,
+        name: 'Filtered Out',
+        description: null,
+        vendor: 'FilterCo',
+        websiteUrl: 'https://filter.example',
+        categoryId: 4,
+        monthlyCost: 75,
+        ownerDepartment: Department.Engineering,
+        status: ToolStatus.active,
+        activeUsersCount: 10,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any,
+    ];
+
+    it('should return empty savings analysis for empty database', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue([]);
+
+      const result = await service.getLowUsageTools();
+
+      expect(result).toEqual({
+        data: [],
+        monthly_savings: 0,
+        annual_savings: 0,
+      });
+    });
+
+    it('should filter tools by maxUsers and compute savings', async () => {
+      jest
+        .spyOn(prisma.tool, 'findMany')
+        .mockResolvedValue(
+          lowUsageMocks.filter((tool) => tool.activeUsersCount <= 5) as any,
+        );
+
+      const result = await service.getLowUsageTools(5);
+
+      expect(result.data).toHaveLength(3);
+      expect(result.data.some((tool) => tool.name === 'Filtered Out')).toBe(
+        false,
+      );
+      expect(prisma.tool.findMany).toHaveBeenCalledWith({
+        where: {
+          status: ToolStatus.active,
+          activeUsersCount: {
+            lte: 5,
+          },
+        },
+      });
+      expect(result.monthly_savings).toBe(850);
+      expect(result.annual_savings).toBe(10200);
+    });
+
+    it('should assign high warning to tools with zero users', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(lowUsageMocks);
+
+      const result = await service.getLowUsageTools();
+
+      const dormant = result.data.find(
+        (tool) => tool.name === 'Dormant Platform',
+      );
+
+      expect(dormant?.warning_level).toBe('high');
+      expect(dormant?.potential_action).toBe(
+        'Consider canceling or downgrading',
+      );
+    });
+
+    it('should apply warning thresholds correctly', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(lowUsageMocks);
+
+      const result = await service.getLowUsageTools();
+
+      expect(
+        result.data.find((tool) => tool.name === 'Review App')?.warning_level,
+      ).toBe('medium');
+      expect(
+        result.data.find((tool) => tool.name === 'Monitor App')?.warning_level,
+      ).toBe('medium');
+    });
+
+    it('should reject invalid max_users values', async () => {
+      await expect(service.getLowUsageTools(0)).rejects.toThrow(
+        'max_users must be a positive integer',
+      );
+    });
+  });
+
+  describe('getVendorSummary', () => {
+    const vendorMocks = [
+      {
+        id: 30,
+        name: 'Design Pro',
+        description: null,
+        vendor: 'Acme Corp',
+        websiteUrl: 'https://acme.example',
+        categoryId: 1,
+        monthlyCost: 200,
+        ownerDepartment: Department.Engineering,
+        status: ToolStatus.active,
+        activeUsersCount: 20,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any,
+      {
+        id: 31,
+        name: 'Design Lite',
+        description: null,
+        vendor: 'Acme Corp',
+        websiteUrl: 'https://acme.example/lite',
+        categoryId: 2,
+        monthlyCost: 100,
+        ownerDepartment: Department.Sales,
+        status: ToolStatus.active,
+        activeUsersCount: 10,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any,
+      {
+        id: 32,
+        name: 'Niche Tool',
+        description: null,
+        vendor: 'SoloVendor',
+        websiteUrl: 'https://solo.example',
+        categoryId: 3,
+        monthlyCost: 40,
+        ownerDepartment: Department.Marketing,
+        status: ToolStatus.active,
+        activeUsersCount: 20,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any,
+      {
+        id: 33,
+        name: 'Premium Tool',
+        description: null,
+        vendor: 'PremiumCo',
+        websiteUrl: 'https://premium.example',
+        categoryId: 4,
+        monthlyCost: 500,
+        ownerDepartment: Department.Engineering,
+        status: ToolStatus.active,
+        activeUsersCount: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any,
+    ];
+
+    it('should return empty summary for empty database', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue([]);
+
+      const result = await service.getVendorSummary();
+
+      expect(result).toEqual({
+        data: [],
+        most_expensive_vendor: null,
+        most_efficient_vendor: null,
+        single_tool_vendors_count: 0,
+      });
+    });
+
+    it('should group tools by vendor and concatenate unique sorted departments', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(vendorMocks);
+
+      const result = await service.getVendorSummary();
+
+      const acme = result.data.find((vendor) => vendor.vendor === 'Acme Corp');
+      expect(acme).toBeDefined();
+      expect(acme?.tools_count).toBe(2);
+      expect(acme?.departments).toEqual(['Engineering', 'Sales']);
+    });
+
+    it('should calculate vendor efficiency ratings', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(vendorMocks);
+
+      const result = await service.getVendorSummary();
+
+      expect(
+        result.data.find((vendor) => vendor.vendor === 'SoloVendor')
+          ?.efficiency_rating,
+      ).toBe('excellent');
+      expect(
+        result.data.find((vendor) => vendor.vendor === 'PremiumCo')
+          ?.efficiency_rating,
+      ).toBe('poor');
+    });
+
+    it('should identify most expensive and most efficient vendors', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(vendorMocks);
+
+      const result = await service.getVendorSummary();
+
+      expect(result.most_expensive_vendor).toBe('PremiumCo');
+      expect(result.most_efficient_vendor).toBe('SoloVendor');
+    });
+
+    it('should count single tool vendors', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(vendorMocks);
+
+      const result = await service.getVendorSummary();
+
+      expect(result.single_tool_vendors_count).toBe(2);
+    });
+  });
 });
 
 const countDecimals = (value: number) => {

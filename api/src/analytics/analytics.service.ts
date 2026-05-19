@@ -6,14 +6,21 @@ import {
   DepartmentCostSummaryDto,
   ExpensiveToolAnalysisDto,
   ExpensiveToolDto,
+  LowUsageSavingsAnalysisDto,
+  LowUsageToolDto,
   ToolsByCategoryDto,
   ToolsByCategoryInsightsDto,
+  VendorInsightsDto,
+  VendorSummaryDto,
 } from './dto/analytics.dto';
 import { EfficiencyRating } from './types/analytics.types';
 import {
   calculateCostPerUser,
   getEfficiencyRating,
+  getLowUsagePotentialAction,
+  getLowUsageWarningLevel,
   getMostExpensiveBy,
+  getVendorEfficiencyRating,
   groupToolsByDepartment,
   roundTo,
   sortDepartmentCostItems,
@@ -161,7 +168,6 @@ export class AnalyticsService {
       };
     }
 
-    // Group by category
     const groupedByCategory = tools.reduce(
       (acc, tool) => {
         const catId = tool.categoryId;
@@ -211,10 +217,8 @@ export class AnalyticsService {
       }))
       .sort((a, b) => a.category_id - b.category_id);
 
-    // Most expensive = highest total_cost
     const mostExpensive = getMostExpensiveBy(data, (cat) => cat.total_cost);
 
-    // Most efficient = lowest cost_per_user (excluding null)
     const withValidCostPerUser = data.filter(
       (cat) => cat.average_cost_per_user !== null,
     );
@@ -236,6 +240,165 @@ export class AnalyticsService {
       most_efficient_category: mostEfficient
         ? mostEfficient.category_name
         : null,
+    };
+  }
+
+  async getLowUsageTools(maxUsers = 5): Promise<LowUsageSavingsAnalysisDto> {
+    if (!Number.isInteger(maxUsers) || maxUsers < 1) {
+      throw new BadRequestException('max_users must be a positive integer');
+    }
+
+    const tools = await this.prisma.tool.findMany({
+      where: {
+        status: ToolStatus.active,
+        activeUsersCount: {
+          lte: maxUsers,
+        },
+      },
+    });
+
+    const data: LowUsageToolDto[] = tools
+      .map((tool) => {
+        const monthlyCost = Number(tool.monthlyCost);
+        const costPerUser =
+          tool.activeUsersCount > 0
+            ? roundTo(monthlyCost / tool.activeUsersCount, 2)
+            : null;
+        const warningLevel = getLowUsageWarningLevel(costPerUser);
+
+        return {
+          id: tool.id,
+          name: tool.name,
+          vendor: tool.vendor ?? '',
+          monthly_cost: monthlyCost,
+          active_users: tool.activeUsersCount,
+          cost_per_user: costPerUser,
+          warning_level: warningLevel,
+          potential_action: getLowUsagePotentialAction(warningLevel),
+        };
+      })
+      .sort((a, b) => {
+        const aCost = a.cost_per_user ?? Number.POSITIVE_INFINITY;
+        const bCost = b.cost_per_user ?? Number.POSITIVE_INFINITY;
+
+        if (aCost !== bCost) {
+          return bCost - aCost;
+        }
+
+        return b.monthly_cost - a.monthly_cost;
+      });
+
+    const monthlySavings = roundTo(
+      sumBy(
+        data.filter(
+          (tool) =>
+            tool.warning_level === 'high' || tool.warning_level === 'medium',
+        ),
+        (tool) => tool.monthly_cost,
+      ),
+      2,
+    );
+
+    return {
+      data,
+      monthly_savings: monthlySavings,
+      annual_savings: roundTo(monthlySavings * 12, 2),
+    };
+  }
+
+  async getVendorSummary(): Promise<VendorInsightsDto> {
+    const tools = await this.prisma.tool.findMany({
+      where: { status: ToolStatus.active },
+    });
+
+    if (tools.length === 0) {
+      return {
+        data: [],
+        most_expensive_vendor: null,
+        most_efficient_vendor: null,
+        single_tool_vendors_count: 0,
+      };
+    }
+
+    const groupedByVendor = tools.reduce(
+      (acc, tool) => {
+        const vendor = tool.vendor?.trim() || 'Unknown';
+
+        if (!acc[vendor]) {
+          acc[vendor] = {
+            vendor,
+            tools_count: 0,
+            total_monthly_cost: 0,
+            total_users: 0,
+            departments: new Set<string>(),
+          };
+        }
+
+        acc[vendor].tools_count += 1;
+        acc[vendor].total_monthly_cost += Number(tool.monthlyCost);
+        acc[vendor].total_users += tool.activeUsersCount;
+        acc[vendor].departments.add(tool.ownerDepartment);
+        return acc;
+      },
+      {} as Record<
+        string,
+        {
+          vendor: string;
+          tools_count: number;
+          total_monthly_cost: number;
+          total_users: number;
+          departments: Set<string>;
+        }
+      >,
+    );
+
+    const data: VendorSummaryDto[] = Object.values(groupedByVendor)
+      .map((vendor) => {
+        const costPerUser =
+          vendor.total_users > 0
+            ? roundTo(vendor.total_monthly_cost / vendor.total_users, 2)
+            : null;
+
+        return {
+          vendor: vendor.vendor,
+          tools_count: vendor.tools_count,
+          total_monthly_cost: roundTo(vendor.total_monthly_cost, 2),
+          total_users: vendor.total_users,
+          departments: Array.from(vendor.departments).sort(),
+          cost_per_user: costPerUser,
+          efficiency_rating: getVendorEfficiencyRating(costPerUser),
+        };
+      })
+      .sort((a, b) => a.vendor.localeCompare(b.vendor));
+
+    const mostExpensiveVendor = getMostExpensiveBy(
+      data,
+      (vendor) => vendor.total_monthly_cost,
+    );
+
+    const mostEfficientVendor = data
+      .filter((vendor) => vendor.cost_per_user !== null)
+      .reduce<VendorSummaryDto | null>((min, vendor) => {
+        if (!min) {
+          return vendor;
+        }
+
+        return (vendor.cost_per_user ?? Number.POSITIVE_INFINITY) <
+          (min.cost_per_user ?? Number.POSITIVE_INFINITY)
+          ? vendor
+          : min;
+      }, null);
+
+    return {
+      data,
+      most_expensive_vendor:
+        mostExpensiveVendor.total_monthly_cost > 0
+          ? mostExpensiveVendor.vendor
+          : null,
+      most_efficient_vendor: mostEfficientVendor?.vendor ?? null,
+      single_tool_vendors_count: data.filter(
+        (vendor) => vendor.tools_count === 1,
+      ).length,
     };
   }
 }

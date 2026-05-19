@@ -91,3 +91,48 @@ export const getEfficiencyRating = (
   if (ratio <= 1.2) return EfficiencyRating.AVERAGE;
   return EfficiencyRating.LOW;
 };
+
+export const getLowUsageWarningLevel = (
+  costPerUser: number | null,
+): 'high' | 'medium' | 'low' => {
+  if (
+    costPerUser === null ||
+    !Number.isFinite(costPerUser) ||
+    costPerUser > 50
+  ) {
+    return 'high';
+  }
+
+  if (costPerUser >= 20) {
+    return 'medium';
+  }
+
+  return 'low';
+};
+
+export const getLowUsagePotentialAction = (
+  warningLevel: 'high' | 'medium' | 'low',
+) => {
+  if (warningLevel === 'high') {
+    return 'Consider canceling or downgrading';
+  }
+
+  if (warningLevel === 'medium') {
+    return 'Review usage and consider optimization';
+  }
+
+  return 'Monitor usage trends';
+};
+
+export const getVendorEfficiencyRating = (
+  costPerUser: number | null,
+): EfficiencyRating => {
+  if (costPerUser === null || !Number.isFinite(costPerUser)) {
+    return EfficiencyRating.POOR;
+  }
+
+  if (costPerUser < 5) return EfficiencyRating.EXCELLENT;
+  if (costPerUser < 15) return EfficiencyRating.GOOD;
+  if (costPerUser < 25) return EfficiencyRating.AVERAGE;
+  return EfficiencyRating.POOR;
+};

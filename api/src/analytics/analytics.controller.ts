@@ -3,7 +3,6 @@ import {
   Controller,
   DefaultValuePipe,
   Get,
-  NotImplementedException,
   ParseIntPipe,
   Query,
 } from '@nestjs/common';
@@ -12,7 +11,9 @@ import { AnalyticsService } from './analytics.service';
 import {
   DepartmentCostSummaryDto,
   ExpensiveToolAnalysisDto,
+  LowUsageSavingsAnalysisDto,
   ToolsByCategoryInsightsDto,
+  VendorInsightsDto,
 } from './dto/analytics.dto';
 
 @ApiTags('analytics')
@@ -152,12 +153,73 @@ export class AnalyticsController {
   }
 
   @Get('low-usage-tools')
-  getLowUsageTools() {
-    throw new NotImplementedException('This endpoint is not implemented yet');
+  @ApiOperation({
+    summary: 'Low usage tools analysis',
+    description:
+      'Finds underutilized tools with savings potential. High warning is assigned to tools with no users or very high cost per user.',
+  })
+  @ApiQuery({
+    name: 'max_users',
+    required: false,
+    type: Number,
+    description: 'Maximum active users threshold. Default 5.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Low usage tools analysis',
+    type: LowUsageSavingsAnalysisDto,
+    example: {
+      data: [
+        {
+          id: 7,
+          name: 'ChatOps',
+          vendor: 'ChatCo',
+          monthly_cost: 200,
+          active_users: 2,
+          cost_per_user: 100,
+          warning_level: 'high',
+          potential_action: 'Consider canceling or downgrading',
+        },
+      ],
+      monthly_savings: 350,
+      annual_savings: 4200,
+    },
+  })
+  getLowUsageTools(
+    @Query('max_users', new DefaultValuePipe(5), ParseIntPipe)
+    maxUsers: number = 5,
+  ): Promise<LowUsageSavingsAnalysisDto> {
+    return this.analyticsService.getLowUsageTools(maxUsers);
   }
 
   @Get('vendor-summary')
-  getVendorSummary() {
-    throw new NotImplementedException('This endpoint is not implemented yet');
+  @ApiOperation({
+    summary: 'Vendor summary analysis',
+    description:
+      'Groups tools by vendor and highlights consolidation opportunities, including vendor efficiency based on cost per user.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Vendor summary analysis',
+    type: VendorInsightsDto,
+    example: {
+      data: [
+        {
+          vendor: 'Acme Corp',
+          tools_count: 4,
+          total_monthly_cost: 2400,
+          total_users: 120,
+          departments: ['Engineering', 'Product'],
+          cost_per_user: 20,
+          efficiency_rating: 'good',
+        },
+      ],
+      most_expensive_vendor: 'Acme Corp',
+      most_efficient_vendor: 'MiniTools Ltd',
+      single_tool_vendors_count: 5,
+    },
+  })
+  getVendorSummary(): Promise<VendorInsightsDto> {
+    return this.analyticsService.getVendorSummary();
   }
 }

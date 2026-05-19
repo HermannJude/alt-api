@@ -1,4 +1,3 @@
-import { NotImplementedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
@@ -160,15 +159,34 @@ describe('AnalyticsController', () => {
     expect(service.getToolsByCategory).toHaveBeenCalled();
   });
 
-  it('getLowUsageTools should throw not implemented', () => {
-    expect(() => controller.getLowUsageTools()).toThrow(notImplementedError);
+  it('getLowUsageTools should delegate to service with default params', async () => {
+    const expectedResponse = {
+      data: [],
+      monthly_savings: 0,
+      annual_savings: 0,
+    };
+
+    jest.spyOn(service, 'getLowUsageTools').mockResolvedValue(expectedResponse);
+
+    await expect(controller.getLowUsageTools()).resolves.toEqual(
+      expectedResponse,
+    );
+    expect(service.getLowUsageTools).toHaveBeenCalledWith(5);
   });
 
-  it('getVendorSummary should throw not implemented', () => {
-    expect(() => controller.getVendorSummary()).toThrow(notImplementedError);
+  it('getVendorSummary should delegate to service', async () => {
+    const expectedResponse = {
+      data: [],
+      most_expensive_vendor: null,
+      most_efficient_vendor: null,
+      single_tool_vendors_count: 0,
+    };
+
+    jest.spyOn(service, 'getVendorSummary').mockResolvedValue(expectedResponse);
+
+    await expect(controller.getVendorSummary()).resolves.toEqual(
+      expectedResponse,
+    );
+    expect(service.getVendorSummary).toHaveBeenCalled();
   });
 });
-
-const notImplementedError = new NotImplementedException(
-  'This endpoint is not implemented yet',
-);
