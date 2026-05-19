@@ -1,15 +1,100 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ToolStatus } from 'generated/prisma/enums';
 import { PrismaService } from 'src/prisma/prisma.service';
 import {
   DepartmentCostDto,
   DepartmentCostSummaryDto,
+  ExpensiveToolAnalysisDto,
+  ExpensiveToolDto,
 } from './dto/analytics.dto';
-import { roundTo } from './utils/calc.utils';
+import { EfficiencyRating } from './types/analytics.types';
+import {
+  calculateCostPerUser,
+  getEfficiencyRating,
+  getMostExpensiveBy,
+  groupToolsByDepartment,
+  roundTo,
+  sortDepartmentCostItems,
+  sumBy,
+} from './utils/analytics.utils';
 
 @Injectable()
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async getExpensiveTools(
+    limit = 10,
+    minCost?: number,
+  ): Promise<ExpensiveToolAnalysisDto> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw new BadRequestException(
+        'limit must be a positive integer between 1 and 100',
+      );
+    }
+
+    if (minCost !== undefined && (!Number.isFinite(minCost) || minCost < 0)) {
+      throw new BadRequestException('min_cost must be a positive number');
+    }
+
+    const tools = await this.prisma.tool.findMany({
+      where: { status: ToolStatus.active },
+    });
+
+    const companyTools = tools.filter((tool) => tool.activeUsersCount > 0);
+    const totalCompanyCost = sumBy(companyTools, (tool) =>
+      Number(tool.monthlyCost),
+    );
+    const totalCompanyUsers = sumBy(
+      companyTools,
+      (tool) => tool.activeUsersCount,
+    );
+    const avgCostPerUserCompany =
+      totalCompanyUsers > 0
+        ? roundTo(totalCompanyCost / totalCompanyUsers, 2)
+        : 0;
+
+    const analyzedTools = tools
+      .filter(
+        (tool) => minCost === undefined || Number(tool.monthlyCost) >= minCost,
+      )
+      .sort((a, b) => Number(b.monthlyCost) - Number(a.monthlyCost))
+      .slice(0, limit);
+
+    const data: ExpensiveToolDto[] = analyzedTools.map((tool) => {
+      const monthlyCost = Number(tool.monthlyCost);
+      const costPerUser = calculateCostPerUser(
+        monthlyCost,
+        tool.activeUsersCount,
+      );
+
+      return {
+        id: tool.id,
+        name: tool.name,
+        vendor: tool.vendor ?? '',
+        monthly_cost: monthlyCost,
+        active_users: tool.activeUsersCount,
+        cost_per_user: costPerUser,
+        efficiency_rating: getEfficiencyRating(
+          costPerUser,
+          avgCostPerUserCompany,
+        ),
+      };
+    });
+
+    const potentialSavingsIdentified = roundTo(
+      sumBy(
+        data.filter((tool) => tool.efficiency_rating === EfficiencyRating.LOW),
+        (tool) => tool.monthly_cost,
+      ),
+      2,
+    );
+
+    return {
+      data,
+      total_tools_analyzed: data.length,
+      potential_savings_identified: potentialSavingsIdentified,
+    };
+  }
 
   async getDepartmentCosts(
     sortBy: 'department' | 'total_cost' = 'department',
@@ -27,63 +112,29 @@ export class AnalyticsService {
       };
     }
 
-    const groupedByDept = tools.reduce(
-      (acc, tool) => {
-        if (!acc[tool.ownerDepartment]) {
-          acc[tool.ownerDepartment] = {
-            department: tool.ownerDepartment,
-            total_cost: 0,
-            tools_count: 0,
-            total_users: 0,
-          };
-        }
-        acc[tool.ownerDepartment].total_cost += Number(tool.monthlyCost);
-        acc[tool.ownerDepartment].tools_count += 1;
-        acc[tool.ownerDepartment].total_users += tool.activeUsersCount;
-        return acc;
-      },
-      {} as Record<
-        string,
-        {
-          department: string;
-          total_cost: number;
-          tools_count: number;
-          total_users: number;
-        }
-      >,
+    const groupedByDept = groupToolsByDepartment(tools);
+
+    const totalCost = sumBy(
+      Object.values(groupedByDept),
+      (department) => department.total_cost,
     );
 
-    const totalCost = Object.values(groupedByDept).reduce(
-      (sum, department) => sum + department.total_cost,
-      0,
-    );
-
-    const data: DepartmentCostDto[] = Object.values(groupedByDept)
-      .map((dept) => ({
+    const data: DepartmentCostDto[] = sortDepartmentCostItems(
+      Object.values(groupedByDept).map((dept) => ({
         department: dept.department,
         total_monthly_cost: dept.total_cost,
         tools_count: dept.tools_count,
         total_users: dept.total_users,
         average_cost_per_tool: roundTo(dept.total_cost / dept.tools_count, 2),
         cost_percentage: roundTo((dept.total_cost / totalCost) * 100, 1),
-      }))
-      .sort((a, b) => {
-        const aVal =
-          sortBy === 'department' ? a.department : a.total_monthly_cost;
-        const bVal =
-          sortBy === 'department' ? b.department : b.total_monthly_cost;
+      })),
+      sortBy,
+      order,
+    );
 
-        if (typeof aVal === 'string' && typeof bVal === 'string') {
-          return order === 'asc'
-            ? aVal.localeCompare(bVal)
-            : bVal.localeCompare(aVal);
-        }
-        const result = (aVal as number) - (bVal as number);
-        return order === 'asc' ? result : -result;
-      });
-
-    const mostExpensive = data.reduce((max, curr) =>
-      curr.total_monthly_cost > max.total_monthly_cost ? curr : max,
+    const mostExpensive = getMostExpensiveBy(
+      data,
+      (department) => department.total_monthly_cost,
     );
 
     return {

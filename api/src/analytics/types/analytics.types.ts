@@ -2,6 +2,7 @@ export enum EfficiencyRating {
   EXCELLENT = 'excellent',
   GOOD = 'good',
   AVERAGE = 'average',
+  LOW = 'low',
   POOR = 'poor',
 }
 

@@ -201,6 +201,132 @@ describe('AnalyticsService - getDepartmentCosts', () => {
       }
     });
   });
+
+  describe('getExpensiveTools', () => {
+    const expensiveToolMocks = [
+      {
+        id: 10,
+        name: 'Enterprise CRM',
+        description: null,
+        vendor: 'BigCorp',
+        websiteUrl: 'https://bigcorp.example',
+        categoryId: 1,
+        monthlyCost: 200,
+        ownerDepartment: Department.Sales,
+        status: ToolStatus.active,
+        activeUsersCount: 12,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any,
+      {
+        id: 11,
+        name: 'Design Suite',
+        description: null,
+        vendor: 'DesignCo',
+        websiteUrl: 'https://designco.example',
+        categoryId: 2,
+        monthlyCost: 150,
+        ownerDepartment: Department.Marketing,
+        status: ToolStatus.active,
+        activeUsersCount: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any,
+      {
+        id: 12,
+        name: 'DevOps Platform',
+        description: null,
+        vendor: 'Opsify',
+        websiteUrl: 'https://opsify.example',
+        categoryId: 3,
+        monthlyCost: 90,
+        ownerDepartment: Department.Engineering,
+        status: ToolStatus.active,
+        activeUsersCount: 30,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any,
+    ];
+
+    it('should return empty analysis for empty database', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue([]);
+
+      const result = await service.getExpensiveTools();
+
+      expect(result).toEqual({
+        data: [],
+        total_tools_analyzed: 0,
+        potential_savings_identified: 0,
+      });
+    });
+
+    it('should respect limit and sort by monthly cost descending', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(expensiveToolMocks);
+
+      const result = await service.getExpensiveTools(2);
+
+      expect(result.data).toHaveLength(2);
+      expect(result.data[0].monthly_cost).toBe(200);
+      expect(result.data[1].monthly_cost).toBe(150);
+    });
+
+    it('should filter by minimum cost', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(expensiveToolMocks);
+
+      const result = await service.getExpensiveTools(10, 160);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].monthly_cost).toBe(200);
+    });
+
+    it('should calculate cost per user and handle zero users gracefully', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(expensiveToolMocks);
+
+      const result = await service.getExpensiveTools(10);
+
+      const zeroUserTool = result.data.find(
+        (tool) => tool.name === 'Design Suite',
+      );
+
+      expect(zeroUserTool).toBeDefined();
+      expect(zeroUserTool?.cost_per_user).toBe(Infinity);
+      expect(zeroUserTool?.efficiency_rating).toBe('low');
+    });
+
+    it('should calculate efficiency ratings based on company average', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(expensiveToolMocks);
+
+      const result = await service.getExpensiveTools(10);
+
+      const enterpriseCrm = result.data.find(
+        (tool) => tool.name === 'Enterprise CRM',
+      );
+      const devOps = result.data.find(
+        (tool) => tool.name === 'DevOps Platform',
+      );
+
+      expect(enterpriseCrm?.efficiency_rating).toBe('low');
+      expect(devOps?.efficiency_rating).toBe('excellent');
+    });
+
+    it('should compute potential savings from low efficiency tools', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(expensiveToolMocks);
+
+      const result = await service.getExpensiveTools(10);
+
+      expect(result.potential_savings_identified).toBe(350);
+      expect(result.total_tools_analyzed).toBe(3);
+    });
+
+    it('should reject invalid limits', async () => {
+      await expect(service.getExpensiveTools(0)).rejects.toThrow(
+        'limit must be a positive integer between 1 and 100',
+      );
+      await expect(service.getExpensiveTools(101)).rejects.toThrow(
+        'limit must be a positive integer between 1 and 100',
+      );
+    });
+  });
 });
 
 const countDecimals = (value: number) => {

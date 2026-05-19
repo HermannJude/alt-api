@@ -116,8 +116,21 @@ describe('AnalyticsController', () => {
     });
   });
 
-  it('getExpensiveTools should throw not implemented', () => {
-    expect(() => controller.getExpensiveTools()).toThrow(notImplementedError);
+  it('getExpensiveTools should delegate to service with default params', async () => {
+    const expectedResponse = {
+      data: [],
+      total_tools_analyzed: 0,
+      potential_savings_identified: 0,
+    };
+
+    jest
+      .spyOn(service, 'getExpensiveTools')
+      .mockResolvedValue(expectedResponse);
+
+    await expect(controller.getExpensiveTools()).resolves.toEqual(
+      expectedResponse,
+    );
+    expect(service.getExpensiveTools).toHaveBeenCalledWith(10);
   });
 
   it('getToolsByCategory should throw not implemented', () => {
