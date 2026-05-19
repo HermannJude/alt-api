@@ -1,6 +1,6 @@
 import { Controller, Get, NotImplementedException } from '@nestjs/common';
-import { AnalyticsService } from './analytics.service';
 import { ApiTags } from '@nestjs/swagger';
+import { AnalyticsService } from './analytics.service';
 
 @ApiTags('analytics')
 @Controller('analytics')

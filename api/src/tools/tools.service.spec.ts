@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ToolsService } from './tools.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateToolDto } from './dto/create-tool.dto';
 import { QueryToolsDto } from './dto/query-tools.dto';
+import { ToolsService } from './tools.service';
 
 describe('ToolsService', () => {
   let service: ToolsService;

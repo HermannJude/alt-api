@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from 'generated/prisma/client';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUsageMetricDto } from './dto/create-usage-metric.dto';
 import { UpdateUsageMetricDto } from './dto/update-usage-metric.dto';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { Prisma } from 'generated/prisma/client';
 
 @Injectable()
 export class UsageMetricsService {
