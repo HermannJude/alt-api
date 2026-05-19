@@ -133,8 +133,31 @@ describe('AnalyticsController', () => {
     expect(service.getExpensiveTools).toHaveBeenCalledWith(10);
   });
 
-  it('getToolsByCategory should throw not implemented', () => {
-    expect(() => controller.getToolsByCategory()).toThrow(notImplementedError);
+  it('getToolsByCategory should delegate to service', async () => {
+    const expectedResponse = {
+      data: [
+        {
+          category_id: 1,
+          category_name: 'Design',
+          total_cost: 3200.0,
+          tools_count: 5,
+          total_users: 25,
+          percentage_of_budget: 8.3,
+          average_cost_per_user: 128.0,
+        },
+      ],
+      most_expensive_category: 'Design',
+      most_efficient_category: 'Productivity',
+    };
+
+    jest
+      .spyOn(service, 'getToolsByCategory')
+      .mockResolvedValue(expectedResponse);
+
+    await expect(controller.getToolsByCategory()).resolves.toEqual(
+      expectedResponse,
+    );
+    expect(service.getToolsByCategory).toHaveBeenCalled();
   });
 
   it('getLowUsageTools should throw not implemented', () => {

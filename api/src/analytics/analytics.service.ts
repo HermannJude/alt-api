@@ -6,6 +6,8 @@ import {
   DepartmentCostSummaryDto,
   ExpensiveToolAnalysisDto,
   ExpensiveToolDto,
+  ToolsByCategoryDto,
+  ToolsByCategoryInsightsDto,
 } from './dto/analytics.dto';
 import { EfficiencyRating } from './types/analytics.types';
 import {
@@ -142,6 +144,98 @@ export class AnalyticsService {
       total_cost: totalCost,
       most_expensive_department:
         mostExpensive.total_monthly_cost > 0 ? mostExpensive.department : null,
+    };
+  }
+
+  async getToolsByCategory(): Promise<ToolsByCategoryInsightsDto> {
+    const tools = await this.prisma.tool.findMany({
+      where: { status: ToolStatus.active },
+      include: { category: true },
+    });
+
+    if (tools.length === 0) {
+      return {
+        data: [],
+        most_expensive_category: null,
+        most_efficient_category: null,
+      };
+    }
+
+    // Group by category
+    const groupedByCategory = tools.reduce(
+      (acc, tool) => {
+        const catId = tool.categoryId;
+        if (!acc[catId]) {
+          acc[catId] = {
+            category_id: catId,
+            category_name: tool.category.name,
+            total_cost: 0,
+            tools_count: 0,
+            total_users: 0,
+          };
+        }
+        acc[catId].total_cost += Number(tool.monthlyCost);
+        acc[catId].tools_count += 1;
+        acc[catId].total_users += tool.activeUsersCount;
+        return acc;
+      },
+      {} as Record<
+        number,
+        {
+          category_id: number;
+          category_name: string;
+          total_cost: number;
+          tools_count: number;
+          total_users: number;
+        }
+      >,
+    );
+
+    const totalBudget = sumBy(
+      Object.values(groupedByCategory),
+      (cat) => cat.total_cost,
+    );
+
+    const data: ToolsByCategoryDto[] = Object.values(groupedByCategory)
+      .map((cat) => ({
+        category_id: cat.category_id,
+        category_name: cat.category_name,
+        total_cost: cat.total_cost,
+        tools_count: cat.tools_count,
+        total_users: cat.total_users,
+        percentage_of_budget: roundTo((cat.total_cost / totalBudget) * 100, 1),
+        average_cost_per_user:
+          cat.total_users > 0
+            ? roundTo(cat.total_cost / cat.total_users, 2)
+            : null,
+      }))
+      .sort((a, b) => a.category_id - b.category_id);
+
+    // Most expensive = highest total_cost
+    const mostExpensive = getMostExpensiveBy(data, (cat) => cat.total_cost);
+
+    // Most efficient = lowest cost_per_user (excluding null)
+    const withValidCostPerUser = data.filter(
+      (cat) => cat.average_cost_per_user !== null,
+    );
+    const mostEfficient =
+      withValidCostPerUser.length > 0
+        ? withValidCostPerUser.reduce((min, cat) =>
+            (cat.average_cost_per_user ?? Infinity) <
+            (min.average_cost_per_user ?? Infinity)
+              ? cat
+              : min,
+          )
+        : null;
+
+    return {
+      data,
+      most_expensive_category: mostExpensive
+        ? mostExpensive.category_name
+        : null,
+      most_efficient_category: mostEfficient
+        ? mostEfficient.category_name
+        : null,
     };
   }
 }

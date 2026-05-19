@@ -327,6 +327,258 @@ describe('AnalyticsService - getDepartmentCosts', () => {
       );
     });
   });
+
+  describe('getToolsByCategory', () => {
+    const categoryMocks = [
+      {
+        id: 1,
+        name: 'Design',
+        description: null,
+        colorHex: '#6366f1',
+        slug: 'design',
+        createdAt: new Date(),
+      },
+      {
+        id: 2,
+        name: 'Productivity',
+        description: null,
+        colorHex: '#6366f1',
+        slug: 'productivity',
+        createdAt: new Date(),
+      },
+      {
+        id: 3,
+        name: 'Communication',
+        description: null,
+        colorHex: '#6366f1',
+        slug: 'communication',
+        createdAt: new Date(),
+      },
+    ];
+
+    const toolsByCategory = [
+      {
+        id: 1,
+        name: 'Figma',
+        description: null,
+        vendor: 'Figma',
+        websiteUrl: 'https://figma.com',
+        categoryId: 1,
+        monthlyCost: 600,
+        ownerDepartment: Department.Marketing,
+        status: ToolStatus.active,
+        activeUsersCount: 10,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        category: categoryMocks[0],
+      } as any,
+      {
+        id: 2,
+        name: 'Sketch',
+        description: null,
+        vendor: 'Sketch',
+        websiteUrl: 'https://sketch.com',
+        categoryId: 1,
+        monthlyCost: 400,
+        ownerDepartment: Department.Marketing,
+        status: ToolStatus.active,
+        activeUsersCount: 5,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        category: categoryMocks[0],
+      } as any,
+      {
+        id: 3,
+        name: 'Notion',
+        description: null,
+        vendor: 'Notion',
+        websiteUrl: 'https://notion.so',
+        categoryId: 2,
+        monthlyCost: 300,
+        ownerDepartment: Department.Engineering,
+        status: ToolStatus.active,
+        activeUsersCount: 30,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        category: categoryMocks[1],
+      } as any,
+      {
+        id: 4,
+        name: 'Slack',
+        description: null,
+        vendor: 'Slack',
+        websiteUrl: 'https://slack.com',
+        categoryId: 3,
+        monthlyCost: 200,
+        ownerDepartment: Department.Engineering,
+        status: ToolStatus.active,
+        activeUsersCount: 50,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        category: categoryMocks[2],
+      } as any,
+    ];
+
+    it('should return empty data when no tools', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue([]);
+
+      const result = await service.getToolsByCategory();
+
+      expect(result).toEqual({
+        data: [],
+        most_expensive_category: null,
+        most_efficient_category: null,
+      });
+    });
+
+    it('should aggregate tools correctly by category', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(toolsByCategory);
+
+      const result = await service.getToolsByCategory();
+
+      expect(result.data).toHaveLength(3);
+
+      const designCat = result.data.find(
+        (cat) => cat.category_name === 'Design',
+      );
+      expect(designCat).toBeDefined();
+      if (designCat) {
+        expect(designCat.total_cost).toBe(1000);
+        expect(designCat.tools_count).toBe(2);
+        expect(designCat.total_users).toBe(15);
+      }
+    });
+
+    it('should calculate percentage_of_budget correctly', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(toolsByCategory);
+
+      const result = await service.getToolsByCategory();
+
+      // Total budget: 1000 + 300 + 200 = 1500
+      // Design: 1000/1500 * 100 = 66.7%
+      // Productivity: 300/1500 * 100 = 20%
+      // Communication: 200/1500 * 100 = 13.3%
+      const design = result.data.find((cat) => cat.category_name === 'Design');
+      const productivity = result.data.find(
+        (cat) => cat.category_name === 'Productivity',
+      );
+      const communication = result.data.find(
+        (cat) => cat.category_name === 'Communication',
+      );
+
+      expect(design?.percentage_of_budget).toBeCloseTo(66.7, 1);
+      expect(productivity?.percentage_of_budget).toBeCloseTo(20, 1);
+      expect(communication?.percentage_of_budget).toBeCloseTo(13.3, 1);
+    });
+
+    it('should sum percentages to 100 within tolerance', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(toolsByCategory);
+
+      const result = await service.getToolsByCategory();
+
+      const totalPercentage = result.data.reduce(
+        (sum, cat) => sum + cat.percentage_of_budget,
+        0,
+      );
+      expect(totalPercentage).toBeCloseTo(100, 0);
+    });
+
+    it('should calculate average_cost_per_user correctly', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(toolsByCategory);
+
+      const result = await service.getToolsByCategory();
+
+      const design = result.data.find((cat) => cat.category_name === 'Design');
+      // Design: 1000 / 15 = 66.67
+      expect(design?.average_cost_per_user).toBeCloseTo(66.67, 2);
+    });
+
+    it('should identify most expensive category', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(toolsByCategory);
+
+      const result = await service.getToolsByCategory();
+
+      expect(result.most_expensive_category).toBe('Design');
+    });
+
+    it('should identify most efficient category (lowest cost_per_user)', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(toolsByCategory);
+
+      const result = await service.getToolsByCategory();
+
+      // Design: 66.67 cost/user
+      // Productivity: 10 cost/user (most efficient)
+      // Communication: 4 cost/user (most efficient!)
+      expect(result.most_efficient_category).toBe('Communication');
+    });
+
+    it('should exclude categories with zero users from efficiency calculation', async () => {
+      const toolsWithZeroUsers = [
+        ...toolsByCategory,
+        {
+          id: 5,
+          name: 'Unused Tool',
+          description: null,
+          vendor: 'Unused',
+          websiteUrl: 'https://unused.com',
+          categoryId: 4,
+          monthlyCost: 500,
+          ownerDepartment: Department.Sales,
+          status: ToolStatus.active,
+          activeUsersCount: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          category: {
+            id: 4,
+            name: 'Unused Category',
+            description: null,
+            colorHex: '#6366f1',
+            slug: 'unused',
+            createdAt: new Date(),
+          },
+        } as any,
+      ];
+
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(toolsWithZeroUsers);
+
+      const result = await service.getToolsByCategory();
+
+      const unusedCat = result.data.find(
+        (cat) => cat.category_name === 'Unused Category',
+      );
+      expect(unusedCat?.average_cost_per_user).toBeNull();
+      // most_efficient_category should still be Communication (skipping Unused)
+      expect(result.most_efficient_category).toBe('Communication');
+    });
+
+    it('should sort categories by id', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(toolsByCategory);
+
+      const result = await service.getToolsByCategory();
+
+      expect(result.data[0].category_id).toBe(1);
+      expect(result.data[1].category_id).toBe(2);
+      expect(result.data[2].category_id).toBe(3);
+    });
+
+    it('should handle decimals correctly (1 decimal for percentage, 2 for cost_per_user)', async () => {
+      jest.spyOn(prisma.tool, 'findMany').mockResolvedValue(toolsByCategory);
+
+      const result = await service.getToolsByCategory();
+
+      result.data.forEach((cat) => {
+        expect(countDecimals(cat.percentage_of_budget)).toBeLessThanOrEqual(1);
+        if (
+          cat.average_cost_per_user !== null &&
+          cat.average_cost_per_user !== undefined
+        ) {
+          expect(countDecimals(cat.average_cost_per_user)).toBeLessThanOrEqual(
+            2,
+          );
+        }
+      });
+    });
+  });
 });
 
 const countDecimals = (value: number) => {

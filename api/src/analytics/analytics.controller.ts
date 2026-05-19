@@ -12,6 +12,7 @@ import { AnalyticsService } from './analytics.service';
 import {
   DepartmentCostSummaryDto,
   ExpensiveToolAnalysisDto,
+  ToolsByCategoryInsightsDto,
 } from './dto/analytics.dto';
 
 @ApiTags('analytics')
@@ -121,8 +122,33 @@ export class AnalyticsController {
   }
 
   @Get('tools-by-category')
-  getToolsByCategory() {
-    throw new NotImplementedException('This endpoint is not implemented yet');
+  @ApiOperation({
+    summary: 'Tools breakdown by category',
+    description:
+      'Aggregated tool costs by category with efficiency insights. Identifies most expensive and most efficient categories.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Tools by category analysis',
+    type: ToolsByCategoryInsightsDto,
+    example: {
+      data: [
+        {
+          category_id: 1,
+          category_name: 'Design',
+          total_cost: 3200.0,
+          tools_count: 5,
+          total_users: 25,
+          percentage_of_budget: 8.3,
+          average_cost_per_user: 128.0,
+        },
+      ],
+      most_expensive_category: 'Design',
+      most_efficient_category: 'Productivity',
+    },
+  })
+  getToolsByCategory(): Promise<ToolsByCategoryInsightsDto> {
+    return this.analyticsService.getToolsByCategory();
   }
 
   @Get('low-usage-tools')
